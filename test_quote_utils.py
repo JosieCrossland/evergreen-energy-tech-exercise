@@ -72,7 +72,7 @@ class TestQuoteUtils(unittest.TestCase):
     def test_calculate_total_installation_cost(self, pump_index, expected):
         selected_heat_pump = self.heat_pump_test_data[pump_index]
         vat_rate = 5
-        actual = sut.calculate_total_installation_cost(selected_heat_pump, vat_rate)
+        actual, _ = sut.calculate_installation_costs(selected_heat_pump, vat_rate)
         self.assertEqual(expected, actual)
 
 

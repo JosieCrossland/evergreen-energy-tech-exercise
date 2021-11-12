@@ -3,6 +3,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+VAT_RATE = 5
 MAX_RETRIES = 3
 
 
@@ -21,35 +22,33 @@ def select_heat_pump(heat_pump_data: List[dict], required_capacity: float) -> di
     sorted_pumps = sorted(heat_pump_data, key=lambda item: item["outputCapacity"])
 
     if required_capacity > highest_capacity_pump.get("outputCapacity"):
-        return {"label": "required capacity exceeds current heat pump range"}
+        return {
+            "label": "required capacity exceeds current heat pump range",
+            "costs": [],
+        }
 
     for heat_pump in sorted_pumps:
         if required_capacity <= heat_pump.get("outputCapacity"):
             return heat_pump
 
 
-def calculate_total_installation_cost(heat_pump: dict, vat_rate: int) -> float:
+def calculate_installation_costs(heat_pump: dict, vat_rate: int) -> tuple[float, str]:
     costs = heat_pump.get("costs")
     net_total = 0
+    breakdown = ""
     for cost_item in costs:
+        costs = list(cost_item.values())
+        breakdown += ", ".join(map(str, costs))
+        breakdown += "\n\t\t"
+
         for key in cost_item.keys():
             if key == "cost":
                 net_total += cost_item.get(key)
 
     vat = (net_total / 100) * vat_rate
+    total_inc_vat = round(net_total + vat, 2)
 
-    return round(net_total + vat, 2)
-
-
-def format_cost_breakdown(heat_pump):
-    raw_costs = heat_pump.get("costs")
-    breakdown = ""
-    for item in raw_costs:
-        costs = list(item.values())
-        breakdown += ", ".join(map(str, costs))
-        breakdown += "\n\t\t"
-
-    return breakdown
+    return total_inc_vat, breakdown
 
 
 def get_heating_days(design_region: str) -> Optional[int]:
@@ -76,3 +75,48 @@ def get_heating_days(design_region: str) -> Optional[int]:
             response.raise_for_status()
     except requests.exceptions.HTTPError as e:
         print(e.response.text)
+
+
+def generate_report(houses_data, heat_pump_data):
+    for house in houses_data:
+        submission_id = house.get("submissionId")
+        floor_area = house.get("floorArea")
+        heating_factor = house.get("heatingFactor")
+        insulation_factor = house.get("insulationFactor")
+        design_region = house.get("designRegion")
+
+        heat_loss = calculate_heat_loss(floor_area, heating_factor, insulation_factor)
+        heating_days = get_heating_days(design_region)
+
+        if heating_days is None:
+            print(
+                f"""
+    --------------------------------------
+    {submission_id}
+    --------------------------------------
+      Heating Loss = {heat_loss}
+      Warning: Could not find design region
+    """
+            )
+            continue
+
+        power_heat_loss = calculate_power_heat_loss(heat_loss, heating_days)
+        recommended_pump = select_heat_pump(heat_pump_data, power_heat_loss)
+        total_installation_cost, cost_breakdown = calculate_installation_costs(
+            recommended_pump, VAT_RATE
+        )
+
+        print(
+            f"""
+    --------------------------------------
+    {submission_id}
+    --------------------------------------
+      Estimated Heat Loss = {heat_loss}
+      Design Region = {design_region}
+      Power Heat Loss = {power_heat_loss}
+      Recommended Heat Pump = {recommended_pump.get("label")}
+      Cost Breakdown
+        {cost_breakdown}
+      Total Cost, including VAT = {total_installation_cost}
+    """
+        )
