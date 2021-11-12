@@ -3,6 +3,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
+MAX_RETRIES = 3
+
 
 def calculate_heat_loss(
     floor_area: int, heating_factor: int, insulation_factor: float
@@ -39,12 +41,23 @@ def calculate_total_installation_cost(heat_pump: dict, vat_rate: int) -> float:
     return round(net_total + vat, 2)
 
 
+def format_cost_breakdown(heat_pump):
+    raw_costs = heat_pump.get("costs")
+    breakdown = ""
+    for item in raw_costs:
+        costs = list(item.values())
+        breakdown += ", ".join(map(str, costs))
+        breakdown += "\n\t\t"
+
+    return breakdown
+
+
 def get_heating_days(design_region: str) -> Optional[int]:
     headers = {"x-api-key": "f661f74e-20a7-4e9f-acfc-041cfb846505"}
     url = f"https://063qqrtqth.execute-api.eu-west-2.amazonaws.com/v1/weather?location={design_region}"
 
     retry_strategy = Retry(
-        total=3,
+        total=MAX_RETRIES,
         status_forcelist=[418, 500, 502, 503, 504],
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -56,10 +69,8 @@ def get_heating_days(design_region: str) -> Optional[int]:
         if response.status_code == requests.codes.ok:
             data = response.json()
             heating_days = data.get("location").get("degreeDays")
-            print(heating_days)
             return int(heating_days)
         elif response.status_code == requests.codes.not_found:
-            print("not found")
             return None
         else:
             response.raise_for_status()
