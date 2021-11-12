@@ -33,10 +33,10 @@ def select_heat_pump(heat_pump_data: List[dict], required_capacity: float) -> di
 
 
 def calculate_installation_costs(heat_pump: dict, vat_rate: int) -> tuple[float, str]:
-    costs = heat_pump.get("costs")
+    heat_pump_costs = heat_pump.get("costs")
     net_total = 0
     breakdown = ""
-    for cost_item in costs:
+    for cost_item in heat_pump_costs:
         costs = list(cost_item.values())
         breakdown += ", ".join(map(str, costs))
         breakdown += "\n\t\t"
